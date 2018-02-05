@@ -1,0 +1,23 @@
+- name: Install and Configure DB
+  hosts: TEST
+  become: yes
+  vars:
+    DBNAME: studentapp
+  tasks:
+    - name: Install MariadDB Server 
+      package:
+        name: mariadb-server
+        state: latest
+
+    - name: Start MariaDB Service
+      service:
+        name: mariadb
+        state: started
+        enabled: yes
+
+    - name: "Create database -- {{DBNAME}}"
+      mysql_db:
+        name: "{{DBNAME}}"
+        state: present
+
+        

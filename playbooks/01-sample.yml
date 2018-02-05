@@ -1,0 +1,12 @@
+- name: Sample play
+  hosts: all
+  tasks:
+    - name: Ping server
+      ping:
+
+- name: Play2 Sample
+  hosts: all
+  tasks:
+    - name: Play2 Ping
+      ping:
+      
