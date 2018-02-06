@@ -1,8 +1,13 @@
 - name: Install and Configure DB
   hosts: TEST
+  gather_facts: no
+  tags:
+    - DB
   become: yes
   vars:
     DBNAME: studentapp
+    DBUSER: student
+    DBPASS: student@1
   tasks:
     - name: Install MariadDB Server 
       package:
@@ -19,5 +24,57 @@
       mysql_db:
         name: "{{DBNAME}}"
         state: present
+
+    - name: Copy the sql schema file to remote node
+      template:
+        src: files/student.sql.j2
+        dest: /tmp/student.sql
+      
+    - name: Load sql schema
+      mysql_db:
+        name: all
+        state: import
+        target: /tmp/student.sql
+
+    - name: Create db user
+      mysql_user:
+          name: "{{DBUSER}}"
+          password: "{{DBPASS}}"
+          priv: "{{DBNAME}}.*:ALL"
+          state: present
+
+- name: Install and Configure Tomcat 
+  hosts: TEST
+  become: yes
+  gather_facts: no
+  tags:
+    - APP
+  vars:
+    TOMCAT_URL: http://www-us.apache.org/dist/tomcat/tomcat-8/v8.5.27/bin/apache-tomcat-8.5.27.tar.gz
+    TOMCAT_BASE_DIR: /root
+  tasks:
+    - name: Install Java
+      package:
+        name: java
+        state: installed
+    
+    - name: Get Tar file 
+      shell: echo {{TOMCAT_URL}} | awk -F / '{print $NF}'
+      register: out
+
+    - name: Define Tar file Fact
+      set_fact:
+        TOMCAT_TAR_FILE: "{{TOMCAT_BASE_DIR}}/{{out.stdout}}"
+
+    - name: Download tomcat
+      get_url:
+        url: "{{TOMCAT_URL}}"
+        dest: "{{TOMCAT_TAR_FILE}}"
+
+
+
+      
+
+
 
         
