@@ -52,24 +52,64 @@
   vars:
     TOMCAT_URL: http://www-us.apache.org/dist/tomcat/tomcat-8/v8.5.27/bin/apache-tomcat-8.5.27.tar.gz
     TOMCAT_BASE_DIR: /root
+    JDBC_URL: https://github.com/cit-latex/stack/raw/master/mysql-connector-java-5.1.40.jar
+    JDBC_FILE: mysql-connector-java-5.1.40.jar
+    WAR_URL: https://github.com/cit-latex/stack/raw/master/student.war
+    
   tasks:
     - name: Install Java
       package:
         name: java
         state: installed
     
-    - name: Get Tar file 
-      shell: echo {{TOMCAT_URL}} | awk -F / '{print $NF}'
+    - name: Get Tar file from url
+      shell: echo {{TOMCAT_URL}} | awk -F / '{print $NF}' | sed -e 's/.tar.gz//'
       register: out
 
-    - name: Define Tar file Fact
+    - name: Define tomcat directory Fact
       set_fact:
-        TOMCAT_TAR_FILE: "{{TOMCAT_BASE_DIR}}/{{out.stdout}}"
+        TOMCAT_LOCATION: "{{TOMCAT_BASE_DIR}}/{{out.stdout}}"
 
-    - name: Download tomcat
-      get_url:
-        url: "{{TOMCAT_URL}}"
-        dest: "{{TOMCAT_TAR_FILE}}"
+    ### Commented because we can download and extract with next task
+    #- name: Download tomcat
+    #  get_url:
+    #    url: "{{TOMCAT_URL}}"
+    #    dest: "{{TOMCAT_TAR_FILE}}"
+
+    - name: Check tomcat directory exists or not 
+      stat:
+        path: "{{TOMCAT_LOCATION}}"
+      register: out 
+
+    - name: Download tomcat and extact
+      unarchive:
+        src: "{{TOMCAT_URL}}"
+        dest: "{{TOMCAT_BASE_DIR}}"
+        remote_src: yes
+      when: out.stat.exists == false 
+
+    - name: Find webapps contents 
+      find:
+        paths: "{{TOMCAT_LOCATION}}/webapps"
+        file_type: any 
+      register: out 
+
+    - name: Remove webapps contents 
+      file: 
+        path: "{{item.path}}"
+        state: absent
+      with_items: "{{out.files}}"
+      
+    - name: Download JDBC jar file 
+      get_url: 
+        url: "{{JDBC_URL}}"
+        dest: "{{TOMCAT_LOCATION}}/lib/{{JDBC_FILE}}"
+
+    - name: Download war file 
+      get_url: 
+        url: "{{WAR_URL}}"
+        dest: "{{TOMCAT_LOCATION}}/webapps/student.war"
+      
 
 
 
