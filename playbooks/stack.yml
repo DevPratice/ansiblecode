@@ -1,13 +1,11 @@
 - name: Install and Configure DB
   hosts: TEST
-  gather_facts: no
+  gather_facts: yes
   tags:
     - DB
   become: yes
-  vars:
-    DBNAME: studentapp
-    DBUSER: student
-    DBPASS: student@1
+  vars_files:
+    - vars-stack.yml
   tasks:
     - name: Install MariadDB Server 
       package:
@@ -42,6 +40,9 @@
           password: "{{DBPASS}}"
           priv: "{{DBNAME}}.*:ALL"
           state: present
+    - name: Register DB Ip address 
+      command: echo {{ansible_all_ipv4_addresses}}
+      register: DBIP
 
 - name: Install and Configure Tomcat 
   hosts: TEST
@@ -49,13 +50,8 @@
   gather_facts: no
   tags:
     - APP
-  vars:
-    TOMCAT_URL: http://www-us.apache.org/dist/tomcat/tomcat-8/v8.5.27/bin/apache-tomcat-8.5.27.tar.gz
-    TOMCAT_BASE_DIR: /root
-    JDBC_URL: https://github.com/cit-latex/stack/raw/master/mysql-connector-java-5.1.40.jar
-    JDBC_FILE: mysql-connector-java-5.1.40.jar
-    WAR_URL: https://github.com/cit-latex/stack/raw/master/student.war
-    
+  vars_files:  
+    - vars-stack.yml
   tasks:
     - name: Install Java
       package:
@@ -110,11 +106,94 @@
         url: "{{WAR_URL}}"
         dest: "{{TOMCAT_LOCATION}}/webapps/student.war"
       
+    - name: Update DB Parameters in context.xml 
+      template:
+        src: files/context.xml.j2
+        dest: "{{TOMCAT_LOCATION}}/conf/context.xml"
 
+    - name: check tomcat running or not 
+      shell: ps -ef | grep tomcat | grep -v grep 
+      register: out 
+      ignore_errors: yes
 
+    - name: Stop tomcat 
+      shell: "nohup sh {{TOMCAT_LOCATION}}/bin/shutdown.sh"
+      when: out.rc == 0
 
+    - name: Start tomcat 
+      shell: "nohup sh {{TOMCAT_LOCATION}}/bin/startup.sh"
       
+- name: Install and configure web 
+  hosts: TEST
+  become: yes
+  gather_facts: no
+  tags:
+    - WEB
+  vars_files:  
+    - vars-stack.yml
+  tasks:
+    - name: Install Web Server 
+      package: 
+        name: "{{item}}"
+        state: installed 
+      with_items:
+        - httpd
+        - httpd-devel
+        - gcc 
 
+    - name: Define CONN location 
+      shell: echo {{CONN_URL}} | awk -F / '{print $NF}' | sed -e 's/.tar.gz//'
+      register: out 
+
+    - set_fact:
+        CONN_LOC: "/opt/{{out.stdout}}"
+      
+    - stat:
+        path: "{{CONN_LOC}}"
+      register: out
+
+    - name: Download and Extract Tomcat Connector 
+      unarchive:
+        src: "{{CONN_URL}}"
+        dest: "/opt"
+        remote_src: yes 
+      when: out.stat.exists == false 
+
+    - name: check mod_jk.so file 
+      stat: 
+        path: /etc/httpd/modules/mod_jk.so
+      register: out 
+
+    - name: Compile tomcat connector 
+      shell: ./configure --with-apxs=/usr/bin/apxs && make && make install 
+      args:
+        chdir: "{{CONN_LOC}}/native"
+      when: out.stat.exists == false 
+
+    - name: Create workers.properties
+      blockinfile:
+        create: yes
+        path: /etc/httpd/conf.d/worker.properties
+        block: |
+          worker.list=tomcatA
+          worker.tomcatA.type=ajp13
+          worker.tomcatA.host=localhost
+          worker.tomcatA.port=8009
+
+    - name: Create modjk conf file
+      blockinfile:
+        create: yes
+        path: /etc/httpd/conf.d/mod_jk.conf
+        block: |
+          LoadModule jk_module modules/mod_jk.so
+          JkWorkersFile conf.d/worker.properties
+          JkMount /student tomcatA
+          JkMount /student/* tomcatA          
+
+    - name: Start web service 
+      service:
+        name: httpd
+        state: restarted 
 
 
         

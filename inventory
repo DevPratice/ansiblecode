@@ -6,5 +6,5 @@ testweb
 ansibletest1 #URL=http://host.google.com
 
 [TEST:vars]
-URL=http://group.google.com
-
+#URL=http://group.google.com
+#
